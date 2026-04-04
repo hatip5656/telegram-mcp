@@ -1,19 +1,43 @@
 {
   "name": "telegram-mcp",
   "version": "1.0.0",
-  "description": "Telegram MCP server for two-way bot communication",
+  "description": "Telegram MCP server for two-way bot communication with session management",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "telegram-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CLAUDE.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
     "telegram",
-    "bot"
+    "bot",
+    "claude",
+    "claude-code",
+    "model-context-protocol",
+    "ai",
+    "session-management"
   ],
+  "author": "Hatip Aksunger",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hatip5656/telegram-mcp.git"
+  },
+  "homepage": "https://github.com/hatip5656/telegram-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/hatip5656/telegram-mcp/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
