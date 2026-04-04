@@ -1,6 +1,6 @@
 # Telegram MCP Server
 
-A Model Context Protocol (MCP) server that connects to a Telegram bot, enabling **two-way messaging** between AI assistants and Telegram.
+A Model Context Protocol (MCP) server that connects to a Telegram bot, enabling **two-way messaging** between AI assistants and Telegram. Supports multi-session management with emoji-prefixed messages.
 
 ---
 
@@ -10,9 +10,18 @@ A Model Context Protocol (MCP) server that connects to a Telegram bot, enabling 
 |------|-------------|
 | `send_message` | Send text messages to any Telegram chat |
 | `get_updates` | Read recent messages with cursor-based pagination |
-| `list_chats` | List all chats the bot has interacted with |
+| `list_chats` | List all chats with claim status |
+| `claim_chat` | Claim a chat for this session (with emoji identifier) |
+| `release_chat` | Release your claim on a chat |
+| `list_sessions` | View all active session claims |
 
-**Real-time notifications** — The server pushes resource update notifications when new messages arrive, so your AI assistant stays in the loop.
+**Session management** — Multiple Claude Code sessions can connect to the same bot. Each session claims a chat with a unique name and emoji prefix for visual identification.
+
+**Real-time notifications** — The server pushes resource update notifications when new messages arrive.
+
+**Message deduplication** — Duplicate messages from Telegram retries are automatically filtered.
+
+**Media metadata** — Photos, videos, documents preserve their file IDs for downstream use.
 
 **In-memory message store** — Keeps up to 1,000 messages per chat (5,000 total) for the session lifetime. No database required.
 
@@ -37,9 +46,7 @@ npm run build
 
 ### 3. Configure Your MCP Client
 
-Add the server to your MCP client configuration:
-
-**Claude Code** (run from the project directory):
+**Claude Code** (recommended):
 ```bash
 claude mcp add telegram -s user -e TELEGRAM_BOT_TOKEN=your-token-here -- node /path/to/telegram-mcp/dist/index.js
 ```
@@ -76,8 +83,26 @@ Or manually create a `.mcp.json` in your project root:
 
 ### 4. Start Chatting
 
-1. Open Telegram and send `/start` to your bot (this lets the bot discover your chat)
-2. Ask your AI assistant to check for Telegram messages or send one!
+1. Open Telegram and send `/start` to your bot
+2. Ask Claude to claim your chat: *"claim my Telegram chat as 'my-project' with emoji blue circle"*
+3. Send messages from Telegram — Claude picks them up automatically!
+
+---
+
+## Session Management
+
+When multiple Claude Code sessions share the same bot, sessions are identified by name and emoji:
+
+```
+🔵 [backend-refactor] Fixing the API endpoint...
+🟢 [debug-api] Found the bug in auth middleware
+🔴 [deploy-monitor] Deploy failed on staging!
+```
+
+- **`claim_chat`** — Claim a chat by username, chat ID, or auto-pick the latest. Set a session name and optional emoji.
+- **`release_chat`** — Release your claim so another session can take over.
+- **`list_sessions`** — See which sessions have claimed which chats.
+- Claims are automatically released when the MCP server shuts down.
 
 ---
 
@@ -101,7 +126,7 @@ When a new message arrives, subscribed clients receive a `notifications/resource
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `chat_id` | `number \| string` | Yes | Telegram chat ID or @username |
-| `text` | `string` | Yes | Message text |
+| `text` | `string` | Yes | Message text (auto-prefixed with session name if claimed) |
 | `parse_mode` | `string` | No | `HTML`, `Markdown`, or `MarkdownV2` |
 | `reply_to_message_id` | `number` | No | Message ID to reply to |
 
@@ -118,6 +143,29 @@ When a new message arrives, subscribed clients receive a `notifications/resource
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `type` | `string` | No | Filter: `all`, `private`, `group`, `supergroup`, `channel` |
+
+Returns chats with claim status (claimed/unclaimed, session name, emoji).
+
+### `claim_chat`
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `chat_id` | `number` | No | Telegram chat ID (optional) |
+| `username` | `string` | No | Telegram username to resolve (optional) |
+| `session_name` | `string` | Yes | Name for this session |
+| `emoji` | `string` | No | Emoji prefix for messages |
+
+If neither `chat_id` nor `username` is provided, claims the most recently active chat.
+
+### `release_chat`
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `chat_id` | `number` | Yes | Telegram chat ID to release |
+
+### `list_sessions`
+
+No parameters. Returns all active session claims with chat details.
 
 ---
 
