@@ -3,10 +3,10 @@ import { z } from "zod";
 import { Bot } from "grammy";
 import { MessageStore } from "../telegram/store.js";
 
-export function registerSendMessage(server: McpServer, bot: Bot, store: MessageStore): void {
+export function registerSendMessage(server: McpServer, bot: Bot, store: MessageStore, sessionState: { id: string; name: string | null; emoji: string | null }): void {
   server.tool(
     "send_message",
-    "Send a text message to a Telegram chat",
+    "Send a text message to a Telegram chat. If this session has claimed the chat, the message is prefixed with the session name.",
     {
       chat_id: z.union([z.number(), z.string()]).describe("Telegram chat ID or @username"),
       text: z.string().describe("Message text to send"),
@@ -15,7 +15,14 @@ export function registerSendMessage(server: McpServer, bot: Bot, store: MessageS
     },
     async ({ chat_id, text, parse_mode, reply_to_message_id }) => {
       try {
-        const result = await bot.api.sendMessage(chat_id, text, {
+        const prefix = sessionState.name
+          ? sessionState.emoji
+            ? `${sessionState.emoji} [${sessionState.name}]`
+            : `[${sessionState.name}]`
+          : null;
+        const prefixedText = prefix ? `${prefix} ${text}` : text;
+
+        const result = await bot.api.sendMessage(chat_id, prefixedText, {
           parse_mode,
           reply_parameters: reply_to_message_id
             ? { message_id: reply_to_message_id }
@@ -29,11 +36,11 @@ export function registerSendMessage(server: McpServer, bot: Bot, store: MessageS
             ? {
                 id: result.from.id,
                 firstName: result.from.first_name,
-                username: result.from.username,
+                username: result.from.username ?? undefined,
                 isBot: result.from.is_bot,
               }
             : undefined,
-          text,
+          text: prefixedText,
           date: result.date,
           direction: "outgoing",
         });
@@ -46,6 +53,7 @@ export function registerSendMessage(server: McpServer, bot: Bot, store: MessageS
                 success: true,
                 message_id: result.message_id,
                 chat_id: result.chat.id,
+                session_name: sessionState.name,
               }),
             },
           ],

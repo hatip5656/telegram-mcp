@@ -12,9 +12,13 @@ export function registerGetUpdates(server: McpServer, store: MessageStore): void
       since_cursor: z.number().optional().describe("Only return messages after this cursor position"),
     },
     async ({ chat_id, limit, since_cursor }) => {
-      const messages = chat_id
+      let messages = chat_id
         ? store.getMessages(chat_id, limit)
         : store.getRecentUpdates(limit, since_cursor);
+
+      if (chat_id && since_cursor !== undefined) {
+        messages = messages.filter((m) => m.cursor > since_cursor).slice(-limit);
+      }
 
       return {
         content: [
@@ -23,6 +27,7 @@ export function registerGetUpdates(server: McpServer, store: MessageStore): void
             text: JSON.stringify({
               messages,
               cursor: store.getCurrentCursor(),
+              minCursor: store.getMinCursor(),
               count: messages.length,
             }),
           },

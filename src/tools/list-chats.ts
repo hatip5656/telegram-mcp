@@ -14,11 +14,19 @@ export function registerListChats(server: McpServer, store: MessageStore): void 
     },
     async ({ type }) => {
       const chats = store.getChats(type);
+      const enriched = chats.map((chat) => {
+        const claim = store.getSessionForChat(chat.id);
+        return {
+          ...chat,
+          claimed: !!claim,
+          claimedBy: claim ? { sessionName: claim.sessionName, emoji: claim.emoji } : null,
+        };
+      });
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ chats, count: chats.length }),
+            text: JSON.stringify({ chats: enriched, count: enriched.length }),
           },
         ],
       };

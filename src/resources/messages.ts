@@ -41,6 +41,7 @@ export function registerResources(server: McpServer, store: MessageStore): void 
             text: JSON.stringify({
               messages,
               cursor: store.getCurrentCursor(),
+              minCursor: store.getMinCursor(),
               count: messages.length,
             }),
           },
@@ -50,7 +51,7 @@ export function registerResources(server: McpServer, store: MessageStore): void 
   );
 
   // Notify subscribers when new messages arrive
-  store.onNewMessage((msg) => {
+  store.on("newMessage", (msg) => {
     server.server.sendResourceUpdated({
       uri: `telegram://chat/${msg.chatId}/messages`,
     });
@@ -60,7 +61,7 @@ export function registerResources(server: McpServer, store: MessageStore): void 
   });
 
   // Notify about new chat resource availability
-  store._emitNewChat = (_chatId: number) => {
+  store.on("newChat", () => {
     server.server.sendResourceListChanged();
-  };
+  });
 }

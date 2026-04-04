@@ -1,5 +1,5 @@
 import { Bot } from "grammy";
-import { MessageStore } from "./store.js";
+import { MessageStore, MediaInfo } from "./store.js";
 
 export function createBot(token: string, store: MessageStore): Bot {
   const bot = new Bot(token);
@@ -8,7 +8,7 @@ export function createBot(token: string, store: MessageStore): Bot {
     const msg = ctx.message;
     const chat = ctx.chat;
 
-    const isNewChat = store.updateChat({
+    store.updateChat({
       id: chat.id,
       type: chat.type,
       title: "title" in chat ? chat.title : undefined,
@@ -17,6 +17,8 @@ export function createBot(token: string, store: MessageStore): Bot {
       lastName: "last_name" in chat ? chat.last_name : undefined,
       lastMessageAt: msg.date,
     });
+
+    const media = extractMedia(msg);
 
     store.addMessage({
       messageId: msg.message_id,
@@ -29,28 +31,47 @@ export function createBot(token: string, store: MessageStore): Bot {
             isBot: msg.from.is_bot,
           }
         : undefined,
-      text: msg.text ?? msg.caption ?? `[${getMessageType(msg)}]`,
+      text: msg.text ?? msg.caption ?? (media ? `[${media.type}]` : "[unsupported message type]"),
+      media,
       date: msg.date,
       direction: "incoming",
     });
-
-    // Notify about new chat discovery separately
-    if (isNewChat) {
-      store._emitNewChat?.(chat.id);
-    }
   });
 
   return bot;
 }
 
-function getMessageType(msg: { photo?: unknown; video?: unknown; document?: unknown; voice?: unknown; audio?: unknown; sticker?: unknown; location?: unknown; contact?: unknown }): string {
-  if (msg.photo) return "photo";
-  if (msg.video) return "video";
-  if (msg.document) return "document";
-  if (msg.voice) return "voice";
-  if (msg.audio) return "audio";
-  if (msg.sticker) return "sticker";
-  if (msg.location) return "location";
-  if (msg.contact) return "contact";
-  return "unsupported message type";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractMedia(msg: any): MediaInfo | undefined {
+  if (msg.photo && Array.isArray(msg.photo) && msg.photo.length > 0) {
+    const largest = msg.photo[msg.photo.length - 1] as { file_id: string; file_size?: number };
+    return { type: "photo", fileId: largest.file_id, fileSize: largest.file_size };
+  }
+  if (msg.video && typeof msg.video === "object") {
+    const v = msg.video as { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+    return { type: "video", fileId: v.file_id, fileName: v.file_name, mimeType: v.mime_type, fileSize: v.file_size };
+  }
+  if (msg.document && typeof msg.document === "object") {
+    const d = msg.document as { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+    return { type: "document", fileId: d.file_id, fileName: d.file_name, mimeType: d.mime_type, fileSize: d.file_size };
+  }
+  if (msg.voice && typeof msg.voice === "object") {
+    const v = msg.voice as { file_id: string; mime_type?: string; file_size?: number };
+    return { type: "voice", fileId: v.file_id, mimeType: v.mime_type, fileSize: v.file_size };
+  }
+  if (msg.audio && typeof msg.audio === "object") {
+    const a = msg.audio as { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+    return { type: "audio", fileId: a.file_id, fileName: a.file_name, mimeType: a.mime_type, fileSize: a.file_size };
+  }
+  if (msg.sticker && typeof msg.sticker === "object") {
+    const s = msg.sticker as { file_id: string; file_size?: number };
+    return { type: "sticker", fileId: s.file_id, fileSize: s.file_size };
+  }
+  if (msg.location) {
+    return { type: "location" };
+  }
+  if (msg.contact) {
+    return { type: "contact" };
+  }
+  return undefined;
 }

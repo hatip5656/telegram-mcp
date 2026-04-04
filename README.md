@@ -39,7 +39,12 @@ npm run build
 
 Add the server to your MCP client configuration:
 
-**Claude Code** (`~/.claude/settings.json`):
+**Claude Code** (run from the project directory):
+```bash
+claude mcp add telegram -s user -e TELEGRAM_BOT_TOKEN=your-token-here -- node /path/to/telegram-mcp/dist/index.js
+```
+
+Or manually create a `.mcp.json` in your project root:
 ```json
 {
   "mcpServers": {
