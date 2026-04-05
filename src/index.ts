@@ -13,6 +13,7 @@ import { registerSendMessage } from "./tools/send-message.js";
 import { registerGetUpdates } from "./tools/get-updates.js";
 import { registerListChats } from "./tools/list-chats.js";
 import { registerClaimChat } from "./tools/claim-chat.js";
+import { registerSendPhoto } from "./tools/send-photo.js";
 import { registerResources } from "./resources/messages.js";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -43,6 +44,7 @@ registerSendMessage(server, bot, store, sessionState);
 registerGetUpdates(server, store);
 registerListChats(server, store);
 registerClaimChat(server, store, sessionState);
+registerSendPhoto(server, bot, store, sessionState);
 
 // Register resources and subscriptions
 registerResources(server, store);
