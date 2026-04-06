@@ -1,6 +1,23 @@
-# Telegram MCP Server
+# telegram-mcp-bot
+
+[![npm version](https://img.shields.io/npm/v/telegram-mcp-bot)](https://www.npmjs.com/package/telegram-mcp-bot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A Model Context Protocol (MCP) server that connects to a Telegram bot, enabling **two-way messaging** between AI assistants and Telegram. Supports multi-session management with emoji-prefixed messages.
+
+---
+
+## Install
+
+```bash
+npm install telegram-mcp-bot
+```
+
+Or run directly with npx:
+
+```bash
+npx -y telegram-mcp-bot
+```
 
 ---
 
@@ -36,20 +53,11 @@ A Model Context Protocol (MCP) server that connects to a Telegram bot, enabling 
 2. Send `/newbot` and follow the prompts
 3. Copy the bot token you receive
 
-### 2. Install & Build
-
-```bash
-git clone git@github.com:hatip5656/telegram-mcp.git
-cd telegram-mcp
-npm install
-npm run build
-```
-
-### 3. Configure Your MCP Client
+### 2. Configure Your MCP Client
 
 **Claude Code** (recommended):
 ```bash
-claude mcp add telegram -s user -e TELEGRAM_BOT_TOKEN=your-token-here -- node /path/to/telegram-mcp/dist/index.js
+claude mcp add telegram -s user -e TELEGRAM_BOT_TOKEN=your-token-here -- npx -y telegram-mcp-bot
 ```
 
 Or manually create a `.mcp.json` in your project root:
@@ -57,8 +65,8 @@ Or manually create a `.mcp.json` in your project root:
 {
   "mcpServers": {
     "telegram": {
-      "command": "node",
-      "args": ["/path/to/telegram-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "telegram-mcp-bot"],
       "env": {
         "TELEGRAM_BOT_TOKEN": "123456:ABC-DEF..."
       }
@@ -72,8 +80,8 @@ Or manually create a `.mcp.json` in your project root:
 {
   "mcpServers": {
     "telegram": {
-      "command": "node",
-      "args": ["/path/to/telegram-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "telegram-mcp-bot"],
       "env": {
         "TELEGRAM_BOT_TOKEN": "123456:ABC-DEF..."
       }
@@ -82,7 +90,7 @@ Or manually create a `.mcp.json` in your project root:
 }
 ```
 
-### 4. Start Chatting
+### 3. Start Chatting
 
 1. Open Telegram and send `/start` to your bot
 2. Ask Claude to claim your chat: *"claim my Telegram chat as 'my-project' with emoji blue circle"*
@@ -191,11 +199,14 @@ No parameters. Returns all active session claims with chat details.
 ## Development
 
 ```bash
+# Clone and build from source
+git clone git@github.com:hatip5656/telegram-mcp.git
+cd telegram-mcp
+npm install
+npm run build
+
 # Run in dev mode (no build step)
 TELEGRAM_BOT_TOKEN=your-token npm run dev
-
-# Build for production
-npm run build
 
 # Test with MCP Inspector
 TELEGRAM_BOT_TOKEN=your-token npx @modelcontextprotocol/inspector node dist/index.js
