@@ -1,5 +1,5 @@
 {
-  "name": "telegram-mcp",
+  "name": "telegram-mcp-bot",
   "version": "1.0.0",
   "description": "Telegram MCP server for two-way bot communication with session management",
   "type": "module",
