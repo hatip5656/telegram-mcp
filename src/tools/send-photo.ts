@@ -1,15 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { Bot } from "grammy";
+import { Bot, InputFile } from "grammy";
+import { existsSync } from "fs";
+import { resolve } from "path";
 import { MessageStore } from "../telegram/store.js";
 
 export function registerSendPhoto(server: McpServer, bot: Bot, store: MessageStore, sessionState: { id: string; name: string | null; emoji: string | null }): void {
   server.tool(
     "send_photo",
-    "Send a photo to a Telegram chat by URL or file ID, with an optional caption. If this session has claimed the chat, the caption is prefixed with the session name.",
+    "Send a photo to a Telegram chat by URL, file ID, or local file path, with an optional caption. If this session has claimed the chat, the caption is prefixed with the session name.",
     {
       chat_id: z.union([z.number(), z.string()]).describe("Telegram chat ID or @username"),
-      photo: z.string().describe("Photo URL or Telegram file_id"),
+      photo: z.string().describe("Photo URL, Telegram file_id, or absolute local file path"),
       caption: z.string().optional().describe("Photo caption"),
       parse_mode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional().describe("Caption formatting mode"),
     },
@@ -24,7 +26,15 @@ export function registerSendPhoto(server: McpServer, bot: Bot, store: MessageSto
           ? prefix ? `${prefix} ${caption}` : caption
           : prefix ?? undefined;
 
-        const result = await bot.api.sendPhoto(chat_id, photo, {
+        // Detect local file path vs URL/file_id
+        const resolvedPath = photo.startsWith("/") || photo.startsWith("~")
+          ? resolve(photo.replace(/^~/, process.env.HOME || "~"))
+          : null;
+        const photoInput = resolvedPath && existsSync(resolvedPath)
+          ? new InputFile(resolvedPath)
+          : photo;
+
+        const result = await bot.api.sendPhoto(chat_id, photoInput, {
           caption: prefixedCaption,
           parse_mode,
         });

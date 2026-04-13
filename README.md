@@ -26,7 +26,7 @@ npx -y telegram-mcp-bot
 | Tool | Description |
 |------|-------------|
 | `send_message` | Send text messages to any Telegram chat |
-| `send_photo` | Send photos by URL or file ID with optional caption |
+| `send_photo` | Send photos by URL, file ID, or local file path with optional caption |
 | `get_updates` | Read recent messages with cursor-based pagination |
 | `list_chats` | List all chats with claim status |
 | `claim_chat` | Claim a chat for this session (with emoji identifier) |
@@ -144,7 +144,7 @@ When a new message arrives, subscribed clients receive a `notifications/resource
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `chat_id` | `number \| string` | Yes | Telegram chat ID or @username |
-| `photo` | `string` | Yes | Photo URL or Telegram file_id |
+| `photo` | `string` | Yes | Photo URL, Telegram file_id, or absolute local file path (e.g. `/tmp/screenshot.png`) |
 | `caption` | `string` | No | Photo caption (auto-prefixed with session name if claimed) |
 | `parse_mode` | `string` | No | `HTML`, `Markdown`, or `MarkdownV2` |
 
