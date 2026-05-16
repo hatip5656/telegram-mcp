@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
 // Redirect all console output to stderr — stdout is reserved for MCP JSON-RPC
-const originalLog = console.log;
 console.log = (...args: unknown[]) => console.error(...args);
 
-import { randomUUID } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { MessageStore } from "./telegram/store.js";
@@ -12,7 +10,7 @@ import { createBot } from "./telegram/bot.js";
 import { registerSendMessage } from "./tools/send-message.js";
 import { registerGetUpdates } from "./tools/get-updates.js";
 import { registerListChats } from "./tools/list-chats.js";
-import { registerClaimChat } from "./tools/claim-chat.js";
+import { registerSetSession } from "./tools/set-session.js";
 import { registerSendPhoto } from "./tools/send-photo.js";
 import { registerResources } from "./resources/messages.js";
 
@@ -22,11 +20,13 @@ if (!token) {
   process.exit(1);
 }
 
-const store = new MessageStore();
+const store = new MessageStore(process.env.DATA_DIR);
 const bot = createBot(token, store);
 
-// Each MCP connection gets a unique session ID
-const sessionState = { id: randomUUID(), name: null as string | null, emoji: null as string | null };
+const sessionState = {
+  name: process.env.SESSION_NAME ?? null,
+  emoji: process.env.SESSION_EMOJI ?? null,
+};
 
 const server = new McpServer(
   {
@@ -35,7 +35,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Telegram bot MCP server. Use claim_chat to claim a chat for this session (with a session name), send_message to send messages, get_updates to read incoming messages, list_chats to see available chats, and list_sessions to see active claims. Users must first message the bot in Telegram before the bot can interact with them.",
+      "Telegram bot MCP server. Use send_message to send messages, get_updates to read incoming messages, list_chats to see available chats. chat_id is optional in send tools — defaults to the most recent known chat.",
   }
 );
 
@@ -43,7 +43,7 @@ const server = new McpServer(
 registerSendMessage(server, bot, store, sessionState);
 registerGetUpdates(server, store);
 registerListChats(server, store);
-registerClaimChat(server, store, sessionState);
+registerSetSession(server, sessionState);
 registerSendPhoto(server, bot, store, sessionState);
 
 // Register resources and subscriptions
@@ -57,16 +57,11 @@ bot.start({
 // Connect MCP server via stdio
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error(`Telegram MCP server connected (session: ${sessionState.id})`);
+console.error(`Telegram MCP server connected`);
 
-// Graceful shutdown — release all claims for this session
+// Graceful shutdown
 const shutdown = async () => {
   console.error("Shutting down...");
-  for (const claim of store.getAllSessions()) {
-    if (claim.sessionId === sessionState.id) {
-      store.releaseChat(claim.chatId, sessionState.id);
-    }
-  }
   bot.stop();
   await server.close();
   process.exit(0);

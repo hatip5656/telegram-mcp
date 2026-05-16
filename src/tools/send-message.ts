@@ -1,28 +1,32 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { Bot } from "grammy";
-import { MessageStore } from "../telegram/store.js";
+import { MessageStore, SessionState, buildSessionPrefix } from "../telegram/store.js";
 
-export function registerSendMessage(server: McpServer, bot: Bot, store: MessageStore, sessionState: { id: string; name: string | null; emoji: string | null }): void {
+export function registerSendMessage(server: McpServer, bot: Bot, store: MessageStore, sessionState: SessionState): void {
   server.tool(
     "send_message",
-    "Send a text message to a Telegram chat. If this session has claimed the chat, the message is prefixed with the session name.",
+    "Send a text message to a Telegram chat. chat_id is optional — defaults to the most recent known chat.",
     {
-      chat_id: z.union([z.number(), z.string()]).describe("Telegram chat ID or @username"),
+      chat_id: z.union([z.number(), z.string()]).optional().describe("Telegram chat ID or @username (optional — defaults to most recent chat)"),
       text: z.string().describe("Message text to send"),
       parse_mode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional().describe("Text formatting mode"),
       reply_to_message_id: z.number().optional().describe("Message ID to reply to"),
     },
     async ({ chat_id, text, parse_mode, reply_to_message_id }) => {
+      const resolvedChatId = chat_id ?? store.getDefaultChatId();
+      if (!resolvedChatId) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "No known chats yet. The user needs to message the bot first." }) }],
+          isError: true,
+        };
+      }
+
       try {
-        const prefix = sessionState.name
-          ? sessionState.emoji
-            ? `${sessionState.emoji} [${sessionState.name}]`
-            : `[${sessionState.name}]`
-          : null;
+        const prefix = buildSessionPrefix(sessionState);
         const prefixedText = prefix ? `${prefix} ${text}` : text;
 
-        const result = await bot.api.sendMessage(chat_id, prefixedText, {
+        const result = await bot.api.sendMessage(resolvedChatId, prefixedText, {
           parse_mode,
           reply_parameters: reply_to_message_id
             ? { message_id: reply_to_message_id }
@@ -53,7 +57,6 @@ export function registerSendMessage(server: McpServer, bot: Bot, store: MessageS
                 success: true,
                 message_id: result.message_id,
                 chat_id: result.chat.id,
-                session_name: sessionState.name,
               }),
             },
           ],

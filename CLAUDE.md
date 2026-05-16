@@ -2,21 +2,21 @@
 
 ## Overview
 
-This is a Telegram MCP server that enables two-way messaging between Claude Code and Telegram via a bot. It supports multi-session management with emoji-prefixed messages.
+Telegram MCP server — two-way messaging between Claude Code and Telegram via a bot. Chats are persisted to disk, so the bot remembers users across restarts.
 
 ## Architecture
 
 - **Runtime**: Node.js + TypeScript
 - **Bot framework**: grammY (Telegram Bot API)
 - **MCP transport**: stdio
-- **Storage**: In-memory (no persistence across restarts)
+- **Storage**: Chats persisted to `~/.telegram-mcp/chats.json`, messages in-memory
 
 ## Key Files
 
-- `src/index.ts` — Entry point, wires everything together
-- `src/telegram/bot.ts` — Telegram bot setup and message handling
-- `src/telegram/store.ts` — Message store, session claims, event system
-- `src/tools/` — MCP tool implementations (send_message, get_updates, list_chats, claim_chat)
+- `src/index.ts` — Entry point
+- `src/telegram/bot.ts` — Bot setup and message handling
+- `src/telegram/store.ts` — Message store, chat persistence, shared types (`SessionState`, `buildSessionPrefix`)
+- `src/tools/` — MCP tools: `send_message`, `send_photo`, `get_updates`, `list_chats`, `set_session`
 - `src/resources/messages.ts` — MCP resource subscriptions
 
 ## Code Conventions
@@ -44,9 +44,6 @@ TELEGRAM_BOT_TOKEN=... node dist/index.js
 
 ## When Using as MCP Server
 
-When this MCP server is connected to a Claude Code session:
-
-1. **Always set up polling** — Use `/loop 1m` to check for new Telegram messages automatically
-2. **Claim the chat** — On first message from a user, call `claim_chat` with a session name
-3. **Track cursor** — Use `since_cursor` to avoid replying to the same message twice
-4. **Session prefix** — All outgoing messages are automatically prefixed with `[session_name]` or `emoji [session_name]`
+1. **Set up polling** — Use `/loop 1m` to check for new Telegram messages automatically
+2. **Track cursor** — Use `since_cursor` in `get_updates` to avoid replying to the same message twice
+3. **chat_id is optional** — Send tools default to the most recent known chat

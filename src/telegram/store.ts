@@ -1,3 +1,12 @@
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
+
+export interface SessionState {
+  name: string | null;
+  emoji: string | null;
+}
+
 export interface ChatInfo {
   id: number;
   type: string;
@@ -32,12 +41,9 @@ export interface StoredMessage {
   cursor: number;
 }
 
-export interface SessionClaim {
-  sessionId: string;
-  sessionName: string;
-  emoji?: string;
-  chatId: number;
-  claimedAt: number;
+export function buildSessionPrefix(session: SessionState): string | null {
+  if (!session.name) return null;
+  return session.emoji ? `${session.emoji} [${session.name}]` : `[${session.name}]`;
 }
 
 type StoreEvent = {
@@ -47,6 +53,8 @@ type StoreEvent = {
 
 const MAX_MESSAGES_PER_CHAT = 1000;
 const MAX_TOTAL_MESSAGES = 5000;
+const MAX_SEEN_MESSAGES = 10000;
+const PERSIST_DEBOUNCE_MS = 2000;
 
 export class MessageStore {
   private messages: StoredMessage[] = [];
@@ -54,11 +62,41 @@ export class MessageStore {
   private chats = new Map<number, ChatInfo>();
   private currentCursor = 0;
   private seenMessages = new Set<string>();
-  private claims = new Map<number, SessionClaim>();
+  private chatsFilePath: string;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private listeners: { [K in keyof StoreEvent]: StoreEvent[K][] } = {
     newMessage: [],
     newChat: [],
   };
+
+  constructor(dataDir?: string) {
+    const dir = dataDir ?? join(homedir(), ".telegram-mcp");
+    mkdirSync(dir, { recursive: true });
+    this.chatsFilePath = join(dir, "chats.json");
+    this.loadChats();
+  }
+
+  private loadChats(): void {
+    try {
+      const data = readFileSync(this.chatsFilePath, "utf-8");
+      const chats: ChatInfo[] = JSON.parse(data);
+      for (const chat of chats) {
+        this.chats.set(chat.id, chat);
+      }
+      console.error(`Loaded ${chats.length} chats from ${this.chatsFilePath}`);
+    } catch {
+      // No file yet — first run
+    }
+  }
+
+  private schedulePersist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      const chats = Array.from(this.chats.values());
+      writeFileSync(this.chatsFilePath, JSON.stringify(chats, null, 2));
+    }, PERSIST_DEBOUNCE_MS);
+  }
 
   on<K extends keyof StoreEvent>(event: K, callback: StoreEvent[K]): void {
     this.listeners[event].push(callback);
@@ -70,6 +108,13 @@ export class MessageStore {
       return null;
     }
     this.seenMessages.add(key);
+
+    if (this.seenMessages.size > MAX_SEEN_MESSAGES) {
+      const iter = this.seenMessages.values();
+      for (let i = 0; i < MAX_SEEN_MESSAGES / 2; i++) {
+        this.seenMessages.delete(iter.next().value!);
+      }
+    }
 
     const stored: StoredMessage = { ...msg, cursor: ++this.currentCursor };
 
@@ -92,6 +137,7 @@ export class MessageStore {
   updateChat(chat: ChatInfo): boolean {
     const isNew = !this.chats.has(chat.id);
     this.chats.set(chat.id, chat);
+    this.schedulePersist();
     if (isNew) {
       for (const cb of this.listeners.newChat) cb(chat.id);
     }
@@ -125,42 +171,8 @@ export class MessageStore {
     return this.currentCursor;
   }
 
-  claimChat(chatId: number, sessionId: string, sessionName: string, emoji?: string): { success: boolean; error?: string } {
-    const existing = this.claims.get(chatId);
-    if (existing && existing.sessionId !== sessionId) {
-      const label = existing.emoji ? `${existing.emoji} ${existing.sessionName}` : existing.sessionName;
-      return { success: false, error: `Chat already claimed by session "${label}"` };
-    }
-    this.claims.set(chatId, { sessionId, sessionName, emoji, chatId, claimedAt: Date.now() });
-    return { success: true };
-  }
-
-  releaseChat(chatId: number, sessionId: string): { success: boolean; error?: string } {
-    const existing = this.claims.get(chatId);
-    if (!existing) {
-      return { success: false, error: "Chat is not claimed" };
-    }
-    if (existing.sessionId !== sessionId) {
-      return { success: false, error: `Chat is claimed by session "${existing.sessionName}", not yours` };
-    }
-    this.claims.delete(chatId);
-    return { success: true };
-  }
-
-  getSessionForChat(chatId: number): SessionClaim | undefined {
-    return this.claims.get(chatId);
-  }
-
-  getAllSessions(): SessionClaim[] {
-    return Array.from(this.claims.values());
-  }
-
-  isChatClaimedBy(chatId: number, sessionId: string): boolean {
-    const claim = this.claims.get(chatId);
-    return claim !== undefined && claim.sessionId === sessionId;
-  }
-
-  isChatClaimed(chatId: number): boolean {
-    return this.claims.has(chatId);
+  getDefaultChatId(): number | null {
+    const chats = this.getChats();
+    return chats.length > 0 ? chats[0].id : null;
   }
 }
