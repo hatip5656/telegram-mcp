@@ -1,20 +1,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MessageStore } from "../telegram/store.js";
+import { MessageStore, SessionState } from "../telegram/store.js";
 
-export function registerGetUpdates(server: McpServer, store: MessageStore): void {
+export function registerGetUpdates(server: McpServer, store: MessageStore, sessionState: SessionState): void {
   server.tool(
     "get_updates",
-    "Get recent messages from Telegram chats",
+    "Get recent messages from Telegram chats. When a session name is set, only returns messages targeted at this session (or untargeted messages).",
     {
       chat_id: z.number().optional().describe("Filter to a specific chat ID"),
       limit: z.number().min(1).max(100).default(20).describe("Max messages to return"),
       since_cursor: z.number().optional().describe("Only return messages after this cursor position"),
     },
     async ({ chat_id, limit, since_cursor }) => {
+      const session = sessionState.name ?? undefined;
+
       let messages = chat_id
-        ? store.getMessages(chat_id, limit)
-        : store.getRecentUpdates(limit, since_cursor);
+        ? store.getMessages(chat_id, limit, session)
+        : store.getRecentUpdates(limit, since_cursor, session);
 
       if (chat_id && since_cursor !== undefined) {
         messages = messages.filter((m) => m.cursor > since_cursor).slice(-limit);

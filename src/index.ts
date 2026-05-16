@@ -52,11 +52,16 @@ const server = new McpServer(
   }
 );
 
+// Register session from env vars if provided
+if (sessionState.name) {
+  store.registerSession(sessionState.name, sessionState.emoji);
+}
+
 // Register tools
 registerSendMessage(server, bot, store, sessionState);
-registerGetUpdates(server, store);
+registerGetUpdates(server, store, sessionState);
 registerListChats(server, store);
-registerSetSession(server, sessionState);
+registerSetSession(server, store, sessionState);
 registerSendPhoto(server, bot, store, sessionState);
 
 // Register resources and subscriptions
@@ -128,6 +133,9 @@ console.error(`Telegram MCP server connected`);
 const shutdown = async () => {
   shuttingDown = true;
   console.error("Shutting down...");
+  if (sessionState.name) {
+    store.unregisterSession(sessionState.name);
+  }
   bot.stop();
   await server.close();
   process.exit(0);
