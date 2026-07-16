@@ -190,6 +190,13 @@ export class MessageStore {
     return this.chatTargets.get(chatId);
   }
 
+  clearTarget(chatId: number): void {
+    this.chatTargets.delete(chatId);
+    const obj: Record<string, string> = {};
+    for (const [id, name] of this.chatTargets) obj[String(id)] = name;
+    writeFileSync(this.targetsFilePath, JSON.stringify(obj, null, 2));
+  }
+
   // --- Messages ---
 
   addMessage(msg: Omit<StoredMessage, "cursor">): StoredMessage | null {

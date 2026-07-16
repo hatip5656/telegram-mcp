@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { MessageStore, MediaInfo, ActiveSession, toCommandName, parseCommand } from "./store.js";
 
 export function createBot(token: string, store: MessageStore): Bot {
@@ -17,26 +17,49 @@ export function createBot(token: string, store: MessageStore): Bot {
 
   store.on("sessionsChanged", debouncedSyncCommands);
 
+  // Handle callback queries from inline keyboard buttons
+  bot.on("callback_query:data", async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    const chatId = ctx.callbackQuery.message?.chat.id;
+    if (!chatId) return;
+
+    if (data.startsWith("switch:")) {
+      const sessionName = data.slice("switch:".length);
+      const sessions = store.getActiveSessions();
+      const matched = sessions.find((s) => s.name === sessionName);
+      if (matched) {
+        store.setTarget(chatId, matched.name);
+        const label = matched.emoji ? `${matched.emoji} ${matched.name}` : matched.name;
+        await ctx.answerCallbackQuery({ text: `Switched to ${label}` });
+        await ctx.editMessageText(
+          `✅ Messages are now directed to: *${label}*\n\nJust type your message below.`,
+          { parse_mode: "Markdown" },
+        );
+      } else {
+        await ctx.answerCallbackQuery({ text: "Session not found" });
+      }
+      return;
+    }
+
+    if (data === "clear_target") {
+      store.clearTarget(chatId);
+      await ctx.answerCallbackQuery({ text: "Target cleared" });
+      await ctx.editMessageText(
+        "✅ Target cleared — messages go to all sessions.\n\nJust type your message below.",
+      );
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+  });
+
   bot.on("message", (ctx) => {
     const msg = ctx.message;
     const chat = ctx.chat;
     const cmd = parseCommand(msg.text ?? "");
 
-    if (cmd === "setup") {
-      const sessions = store.getActiveSessions();
-      const sessionList = sessions.length > 0
-        ? sessions.map((s) => {
-            const label = s.emoji ? `${s.emoji} ${s.name}` : s.name;
-            return `  /${toCommandName(s.name)} — ${label}`;
-          }).join("\n")
-        : "  No active sessions";
-      const target = store.getTarget(chat.id);
-      ctx.reply(
-        `Chat ID: \`${chat.id}\`\n\n` +
-        `Active sessions:\n${sessionList}\n\n` +
-        `Current target: ${target ? `\`${target}\`` : "none (all sessions receive messages)"}`,
-        { parse_mode: "Markdown" },
-      );
+    if (cmd === "setup" || cmd === "start") {
+      sendSessionPicker(ctx, store);
       return;
     }
 
@@ -46,7 +69,10 @@ export function createBot(token: string, store: MessageStore): Bot {
       if (matched) {
         store.setTarget(chat.id, matched.name);
         const label = matched.emoji ? `${matched.emoji} ${matched.name}` : matched.name;
-        ctx.reply(`Messages are now directed to session: ${label}`);
+        ctx.reply(
+          `✅ Messages are now directed to: *${label}*\n\nJust type your message below.`,
+          { parse_mode: "Markdown" },
+        );
         return;
       }
     }
@@ -84,12 +110,50 @@ export function createBot(token: string, store: MessageStore): Bot {
   return bot;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sendSessionPicker(ctx: any, store: MessageStore): void {
+  const sessions = store.getActiveSessions();
+  const chatId = ctx.chat.id;
+  const currentTarget = store.getTarget(chatId);
+
+  if (sessions.length === 0) {
+    ctx.reply(
+      `Chat ID: \`${chatId}\`\n\nNo active sessions. Start a Claude Code session with \`set_session\` first.`,
+      { parse_mode: "Markdown" },
+    );
+    return;
+  }
+
+  const keyboard = new InlineKeyboard();
+  for (const s of sessions) {
+    const label = s.emoji ? `${s.emoji} ${s.name}` : s.name;
+    const isCurrent = currentTarget === s.name;
+    keyboard.text(isCurrent ? `✅ ${label}` : label, `switch:${s.name}`).row();
+  }
+  keyboard.text("🔄 Clear target (all sessions)", "clear_target").row();
+
+  const targetLabel = currentTarget
+    ? sessions.find((s) => s.name === currentTarget)?.emoji
+      ? `${sessions.find((s) => s.name === currentTarget)!.emoji} ${currentTarget}`
+      : currentTarget
+    : "none";
+
+  ctx.reply(
+    `📡 *Session Manager*\n\n` +
+    `Chat ID: \`${chatId}\`\n` +
+    `Current target: *${targetLabel}*\n\n` +
+    `Tap a session below, then type your message:`,
+    { parse_mode: "Markdown", reply_markup: keyboard },
+  );
+}
+
 function syncCommands(bot: Bot, sessions: ActiveSession[]): void {
   const commands = [
-    { command: "setup", description: "Show chat ID and active sessions" },
+    { command: "setup", description: "📡 Session manager — pick a session" },
+    { command: "start", description: "📡 Session manager — pick a session" },
     ...sessions.map((s) => ({
       command: toCommandName(s.name),
-      description: `Switch to session: ${s.emoji ? `${s.emoji} ` : ""}${s.name}`,
+      description: `Switch to: ${s.emoji ? `${s.emoji} ` : ""}${s.name}`,
     })),
   ];
   bot.api.setMyCommands(commands).catch((err) =>
