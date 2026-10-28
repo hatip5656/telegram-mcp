@@ -21,6 +21,7 @@ export interface ChatInfo {
   firstName?: string;
   lastName?: string;
   lastMessageAt: number;
+  lastSenderId?: number;
 }
 
 export interface MediaInfo {
@@ -277,6 +278,37 @@ export class MessageStore {
 
   getCurrentCursor(): number {
     return this.currentCursor;
+  }
+
+  // Drops persisted chats that fail the predicate — e.g. chats saved before an
+  // allowlist was configured, or from users who have since been removed.
+  retainChats(keep: (chat: ChatInfo) => boolean): void {
+    let removed = 0;
+    for (const [id, chat] of this.chats) {
+      if (!keep(chat)) {
+        this.chats.delete(id);
+        this.chatTargets.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      console.error(`Dropped ${removed} chat(s) not owned by an allowed user`);
+      this.schedulePersist();
+    }
+  }
+
+  // Resolves a send target to a known chat. Only chats that have messaged the
+  // bot (and so passed the allowlist) can be sent to, which stops an injected
+  // instruction from redirecting output to an arbitrary chat.
+  resolveChatId(chatId?: number | string): number | null {
+    if (chatId === undefined) return this.getDefaultChatId();
+    if (typeof chatId === "string" && chatId.startsWith("@")) {
+      const username = chatId.slice(1).toLowerCase();
+      const match = this.getChats().find((c) => c.username?.toLowerCase() === username);
+      return match?.id ?? null;
+    }
+    const id = Number(chatId);
+    return this.chats.has(id) ? id : null;
   }
 
   getDefaultChatId(): number | null {

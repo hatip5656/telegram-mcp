@@ -15,9 +15,12 @@ Telegram MCP server — two-way messaging between Claude Code and Telegram via a
 
 - `src/index.ts` — Entry point
 - `src/telegram/bot.ts` — Bot setup, message handling, dynamic command registration
+- `src/telegram/access.ts` — `TELEGRAM_ALLOWED_USERS` allowlist parsing (deny-by-default)
 - `src/telegram/store.ts` — Message store, chat/session/target persistence, shared types (`SessionState`, `ActiveSession`, `buildSessionPrefix`, `toCommandName`, `parseCommand`)
 - `src/tools/` — MCP tools: `send_message`, `send_photo`, `get_updates`, `list_chats`, `set_session`
 - `src/resources/messages.ts` — MCP resource subscriptions
+- `skills/telegram-mcp/SKILL.md` — Agent skill (listed on skill marketplaces; `npm run skill:zip` packages it)
+- Tests: `src/**/*.test.ts` using `node:test` via tsx (`npm test`); excluded from the tsc build
 
 ## Code Conventions
 
@@ -33,7 +36,8 @@ Telegram MCP server — two-way messaging between Claude Code and Telegram via a
 npm install
 npm run build          # tsc
 npm run dev            # tsx src/index.ts (no build needed)
-TELEGRAM_BOT_TOKEN=... node dist/index.js
+npm test               # node:test via tsx
+TELEGRAM_BOT_TOKEN=... TELEGRAM_ALLOWED_USERS=<user id> node dist/index.js
 ```
 
 ## Git

@@ -14,10 +14,13 @@ export function registerSendMessage(server: McpServer, bot: Bot, store: MessageS
       reply_to_message_id: z.number().optional().describe("Message ID to reply to"),
     },
     async ({ chat_id, text, parse_mode, reply_to_message_id }) => {
-      const resolvedChatId = chat_id ?? store.getDefaultChatId();
+      const resolvedChatId = store.resolveChatId(chat_id);
       if (!resolvedChatId) {
+        const error = chat_id === undefined
+          ? "No known chats yet. An allowed user (TELEGRAM_ALLOWED_USERS) needs to message the bot first."
+          : `Unknown chat ${chat_id}. Messages can only be sent to chats where an allowed user has messaged the bot.`;
         return {
-          content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "No known chats yet. The user needs to message the bot first." }) }],
+          content: [{ type: "text" as const, text: JSON.stringify({ success: false, error }) }],
           isError: true,
         };
       }

@@ -3,10 +3,12 @@
 // Redirect all console output to stderr — stdout is reserved for MCP JSON-RPC
 console.log = (...args: unknown[]) => console.error(...args);
 
+import { readFileSync } from "fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { MessageStore } from "./telegram/store.js";
 import { createBot } from "./telegram/bot.js";
+import { AccessPolicy, parseAllowedUsers, isUserAllowed } from "./telegram/access.js";
 import { registerSendMessage } from "./tools/send-message.js";
 import { registerGetUpdates } from "./tools/get-updates.js";
 import { registerListChats } from "./tools/list-chats.js";
@@ -33,8 +35,31 @@ if (!token) {
   process.exit(1);
 }
 
+let policy: AccessPolicy;
+try {
+  policy = parseAllowedUsers(process.env.TELEGRAM_ALLOWED_USERS);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+if (policy.allowAll) {
+  console.error("[telegram-mcp] WARNING: TELEGRAM_ALLOWED_USERS=* — anyone who finds this bot can message your agent");
+} else if (policy.userIds.size === 0) {
+  console.error(
+    "[telegram-mcp] TELEGRAM_ALLOWED_USERS is not set — all incoming messages will be rejected. " +
+    "Message the bot to get your user ID, then add it to the config."
+  );
+}
+
+const { version } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf-8")
+) as { version: string };
+
 const store = new MessageStore(process.env.DATA_DIR);
-const bot = createBot(token, store);
+store.retainChats((chat) =>
+  isUserAllowed(policy, chat.type === "private" ? chat.id : chat.lastSenderId)
+);
+const bot = createBot(token, store, policy);
 
 const sessionState = {
   name: process.env.SESSION_NAME ?? null,
@@ -44,11 +69,11 @@ const sessionState = {
 const server = new McpServer(
   {
     name: "telegram-mcp",
-    version: "1.0.0",
+    version,
   },
   {
     instructions:
-      "Telegram bot MCP server. Use send_message to send messages, get_updates to read incoming messages, list_chats to see available chats. chat_id is optional in send tools — defaults to the most recent known chat.",
+      "Telegram bot MCP server. Use send_message to send messages, get_updates to read incoming messages, list_chats to see available chats. chat_id is optional in send tools — defaults to the most recent known chat. Only users listed in TELEGRAM_ALLOWED_USERS can message the bot, and messages can only be sent to chats those users have opened.",
   }
 );
 
@@ -131,6 +156,7 @@ console.error(`Telegram MCP server connected`);
 
 // Graceful shutdown
 const shutdown = async () => {
+  if (shuttingDown) return;
   shuttingDown = true;
   console.error("Shutting down...");
   if (sessionState.name) {
@@ -143,3 +169,7 @@ const shutdown = async () => {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+// The host closing stdin means it's gone — exit rather than linger as an
+// orphan that keeps polling the token and causes 409s for the next session.
+process.stdin.on("end", shutdown);
+if (process.stdin.readableEnded) void shutdown();
