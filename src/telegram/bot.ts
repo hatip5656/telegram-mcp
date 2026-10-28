@@ -1,8 +1,30 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { MessageStore, MediaInfo, ActiveSession, toCommandName, parseCommand } from "./store.js";
+import { AccessPolicy, isUserAllowed } from "./access.js";
 
-export function createBot(token: string, store: MessageStore): Bot {
+export function createBot(token: string, store: MessageStore, policy: AccessPolicy): Bot {
   const bot = new Bot(token);
+
+  // Gate every update before any other handler runs. Rejected users get their
+  // user ID back once (private chats only) so the owner can allowlist them.
+  const notifiedUsers = new Set<number>();
+  bot.use(async (ctx, next) => {
+    const userId = ctx.from?.id;
+    if (isUserAllowed(policy, userId)) {
+      await next();
+      return;
+    }
+
+    console.error(`[telegram-mcp] ignored update from unauthorized user ${userId ?? "unknown"}`);
+    if (userId === undefined || ctx.chat?.type !== "private" || notifiedUsers.has(userId)) return;
+    notifiedUsers.add(userId);
+    await ctx.reply(
+      `⛔ You are not authorized to use this bot.\n\n` +
+      `Your Telegram user ID is \`${userId}\`. If this is your bot, add it to ` +
+      `\`TELEGRAM_ALLOWED_USERS\` in the MCP server config and restart.`,
+      { parse_mode: "Markdown" },
+    ).catch((err) => console.error("Failed to send unauthorized notice:", err));
+  });
 
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
   const debouncedSyncCommands = (sessions: ActiveSession[]) => {
@@ -85,6 +107,7 @@ export function createBot(token: string, store: MessageStore): Bot {
       firstName: "first_name" in chat ? chat.first_name : undefined,
       lastName: "last_name" in chat ? chat.last_name : undefined,
       lastMessageAt: msg.date,
+      lastSenderId: msg.from?.id,
     });
 
     const media = extractMedia(msg);

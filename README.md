@@ -16,9 +16,56 @@ A Model Context Protocol (MCP) server that connects Claude Code to Telegram via 
 claude mcp add telegram -s user -e TELEGRAM_BOT_TOKEN=your-token -- npx -y telegram-mcp-bot@latest
 ```
 
-3. Message the bot once from Telegram — it remembers you from then on
+3. Message the bot — it replies with **your Telegram user ID** and refuses everything else (see [Security](#security))
+4. Re-add the server with that ID allowlisted and restart Claude Code:
+
+```bash
+claude mcp remove telegram -s user
+claude mcp add telegram -s user \
+  -e TELEGRAM_BOT_TOKEN=your-token \
+  -e TELEGRAM_ALLOWED_USERS=123456789 \
+  -- npx -y telegram-mcp-bot@latest
+```
+
+5. Message the bot again — it remembers your chat from then on
 
 That's it. Claude can now send and receive messages through the bot.
+
+### Other agents
+
+Any MCP client works. For JSON-configured agents (Cursor, Windsurf, Copilot, …):
+
+```json
+{
+  "mcpServers": {
+    "telegram": {
+      "command": "npx",
+      "args": ["-y", "telegram-mcp-bot@latest"],
+      "env": {
+        "TELEGRAM_BOT_TOKEN": "your-token",
+        "TELEGRAM_ALLOWED_USERS": "123456789"
+      }
+    }
+  }
+}
+```
+
+### Agent skill
+
+[`skills/telegram-mcp/SKILL.md`](skills/telegram-mcp/SKILL.md) teaches the agent when and how to use the tools: notifying you, asking questions and waiting for answers, the polling loop, and multi-session routing. Copy the folder into your agent's skills directory (e.g. `~/.claude/skills/`).
+
+---
+
+## Security
+
+Everything an allowed user sends goes into your agent's context, and that agent can usually run commands on your machine. So the server is locked down by default:
+
+- **Allowlist by default** — only Telegram user IDs in `TELEGRAM_ALLOWED_USERS` get through. If it isn't set, every message is rejected. Unknown users are told their ID once (in private chats) and otherwise ignored. Usernames aren't accepted because they can be changed and re-registered by someone else. `TELEGRAM_ALLOWED_USERS=*` opens the bot to everyone — don't, unless you understand the risk.
+- **Known chats only** — send tools refuse chats that no allowed user has messaged, so an injected instruction can't redirect output to an attacker's chat. Saved chats from users who are no longer allowed are dropped at startup.
+- **Images only from disk** — `send_photo` only reads local files with image extensions.
+- **Network** — the server only talks to the Telegram Bot API (`api.telegram.org`).
+
+> **Upgrading from 1.x:** 2.0 rejects all messages until `TELEGRAM_ALLOWED_USERS` is set. Message the bot to get your ID, then add it.
 
 ---
 
@@ -45,6 +92,7 @@ Multiple Claude Code sessions can share the same bot. Each session registers its
 ```
 claude mcp add telegram -s user \
   -e TELEGRAM_BOT_TOKEN=your-token \
+  -e TELEGRAM_ALLOWED_USERS=123456789 \
   -e SESSION_NAME=debug-api \
   -e SESSION_EMOJI=🟢 \
   -- npx -y telegram-mcp-bot@latest
@@ -63,10 +111,11 @@ Messages are routed: each session only receives messages targeted at it (or unta
 
 Commands are registered dynamically when sessions connect/disconnect.
 
-## Optional Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |---|---|
+| `TELEGRAM_ALLOWED_USERS` | Comma-separated Telegram user IDs allowed to use the bot (required in practice — unset rejects everyone; `*` allows anyone) |
 | `SESSION_NAME` | Session name — registers a Telegram command and prefixes outgoing messages |
 | `SESSION_EMOJI` | Emoji prefix (e.g. `🔵`) |
 | `DATA_DIR` | Override data directory (default: `~/.telegram-mcp`) |
@@ -89,7 +138,9 @@ git clone git@github.com:hatip5656/telegram-mcp.git
 cd telegram-mcp
 npm install
 npm run build
-TELEGRAM_BOT_TOKEN=your-token npm run dev
+TELEGRAM_BOT_TOKEN=your-token TELEGRAM_ALLOWED_USERS=your-id npm run dev
+npm test
+npm run skill:zip      # packages skills/telegram-mcp into a zip for skill marketplaces
 ```
 
 ---
